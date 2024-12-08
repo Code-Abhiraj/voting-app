@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const useCastVote = (voterId) => {
+const useCastVote = (token) => {
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false); // Add loading state
 
@@ -11,8 +11,9 @@ const useCastVote = (voterId) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "token": token
         },
-        body: JSON.stringify({ voterId, candidateId }),
+        body: JSON.stringify({ candidateId }),
       });
 
       if (!response.ok) {

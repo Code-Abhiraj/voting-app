@@ -14,7 +14,7 @@ export const useFetchResults = () => {
         throw new Error("Failed to fetch data");
       }
       const result = await response.json();
-      setData(result.parties || []); 
+      setData((d) => {return result.parties || []}); 
     } catch (err) {
       setError(err.message);
     } finally {

@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import useFetchCandidates from "@/hooks/useFetchCandidates";
 import useCastVote from "@/hooks/useCastVote";
 
@@ -8,15 +9,39 @@ export default function VotingPage() {
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [showWarning, setShowWarning] = useState(false);
   const navigate = useNavigate();
-  const { id } = useParams();
+  const token = localStorage.getItem("token");
+  const Socket = useRef();
 
-  // Use custom hooks
-  const { candidates, error, loading: loadingCandidates } = useFetchCandidates(id);
-  const { castVote, errorMessage, loading: loadingVote } = useCastVote(id);
+  const { candidates, error, loading: loadingCandidates, details, constituency } = useFetchCandidates(token);
+  const { castVote, errorMessage, loading: loadingVote } = useCastVote(token);
+
+  useEffect(() => {
+    const wss = new WebSocket("ws://localhost:5001");
+    Socket.current = wss;
+
+    wss.onopen = () => {
+      wss.send("Init");
+    };
+
+    wss.onmessage = (message) => {
+      if (message.data.toString() === "Done") {
+        navigate("/");
+      }
+    };
+
+    return () => {
+      wss.close();
+    };
+  }, []);
 
   const handleVoteClick = (candidate) => {
     setSelectedCandidate(candidate);
     setShowWarning(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    navigate("/");
   };
 
   const handleConfirmVote = async () => {
@@ -24,7 +49,9 @@ export default function VotingPage() {
 
     if (status) {
       setShowWarning(false);
-      navigate("/");
+      if (Socket.current && Socket.current.readyState === WebSocket.OPEN) {
+        Socket.current.send("Vote");
+      }
     } else {
       alert(errorMessage || "Failed to cast your vote. Please try again.");
     }
@@ -32,64 +59,62 @@ export default function VotingPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Voting Page</h1>
+        <div className="flex justify-between items-center mb-4">
+        <div>
+            <h2 className="text-lg font-bold">Voter Details</h2>
+<p><strong>Voter Name:</strong> {details?.name || 'N/A'}</p>
+<p><strong>Voter ID:</strong> {details?.Id || 'N/A'}</p>
+<p><strong>Constituency:</strong> {constituency || 'N/A'}</p>
+          </div>
+          <div className="mt-5">
+          <Button variant="destructive" onClick={handleLogout}>
+            Logout
+          </Button>
+          </div>
+        </div>
 
-      {/* Loading indicator while fetching candidates */}
       {loadingCandidates ? (
         <div>Loading candidates...</div>
       ) : (
-        <Table className="w-full">
-          <TableCaption>List of candidates in your constituency</TableCaption>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Party</TableHead>
-              <TableHead className="text-right">Votes</TableHead>
-              <TableHead className="text-center">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {candidates.map((candidate, index) => (
-              <TableRow key={index}>
-                <TableCell>{candidate.party_name}</TableCell>
-                <TableCell className="text-right">{candidate.voteCount}</TableCell>
-                <TableCell className="text-center">
-                  <button
-                    onClick={() => handleVoteClick(candidate)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    Vote
-                  </button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {candidates.map((candidate, index) => (
+            <Card key={index} className="shadow-md">
+              <CardHeader>
+                <CardTitle>{candidate.name}</CardTitle>
+                <CardDescription>{candidate.party_name}</CardDescription>
+              </CardHeader>
+              <CardFooter className="flex justify-end">
+                <Button
+                  variant="primary"
+                  onClick={() => handleVoteClick(candidate)}
+                >
+                  Vote
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
       )}
 
-      {/* Error message for fetching candidates */}
       {error && <div className="text-red-500">{error}</div>}
 
-      {/* Warning Dialog */}
       {showWarning && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-md shadow-md">
-            <p className="text-gray text-lg mb-4">
+            <p className="text-black text-lg mb-4">
               Are you sure you want to vote for <strong>{selectedCandidate?.name}</strong>?
             </p>
             <div className="flex justify-end space-x-4">
-              <button
-                onClick={() => setShowWarning(false)}
-                className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300"
-              >
+              <Button variant="secondary" onClick={() => setShowWarning(false)}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
                 onClick={handleConfirmVote}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                disabled={loadingVote} // Disable the button while voting
+                disabled={loadingVote}
               >
                 {loadingVote ? "Casting Vote..." : "Confirm"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
